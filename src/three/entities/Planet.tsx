@@ -178,14 +178,15 @@ export function Planet({ body }: PlanetProps) {
   const uniforms = useMemo<Record<string, THREE.IUniform>>(() => {
     if (body.isStar) {
       const col = body.palette.atmosphere;
-      return {
+      const u: Record<string, THREE.IUniform> = {
         uTime: { value: 0 },
         uSeed: { value: body.seed % 1000 },
         uDisplacement: { value: 0 },
         uColor: { value: new THREE.Color(col[0], col[1], col[2]).multiplyScalar(1.4) },
       };
+      return u;
     }
-    return {
+    const u: Record<string, THREE.IUniform> = {
       uTime: { value: 0 },
       uSeed: { value: body.seed % 1000 },
       uDisplacement: { value: 0.08 + body.level * 0.015 },
@@ -199,6 +200,7 @@ export function Planet({ body }: PlanetProps) {
       uAtmo: { value: body.atmosphereDensity },
       uAurora: { value: body.aurora ? 1 : 0 },
     };
+    return u;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [body.seed, body.isStar]);
 
