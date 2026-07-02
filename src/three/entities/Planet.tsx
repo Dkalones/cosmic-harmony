@@ -175,7 +175,7 @@ export function Planet({ body }: PlanetProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const matRef = useRef<THREE.ShaderMaterial>(null);
 
-  const uniforms = useMemo(() => {
+  const uniforms = useMemo<Record<string, THREE.IUniform>>(() => {
     if (body.isStar) {
       const col = body.palette.atmosphere;
       return {
