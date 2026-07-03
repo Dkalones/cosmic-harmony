@@ -1,271 +1,145 @@
 
-# SpotUniverse — Arquitetura & Plano de Desenvolvimento
+# SpotUniverse — Universo Procedural Contínuo (expansão)
 
-## 0. Nota sobre a stack
+Objetivo: transformar o MVP atual (uma cena "SystemView" com um planeta) em um **universo contínuo** com coordenadas absolutas, LOD hierárquico, streaming por octree e navegação sem cortes. Sem remover nada do que existe.
 
-Você pediu **Next.js**, mas este projeto Lovable roda em **TanStack Start (React 19 + Vite 7)** com **Lovable Cloud (Supabase gerenciado)** já integrado. Proponho manter TanStack Start — o modelo mental é o mesmo (SSR, file-based routing, server functions no lugar de Route Handlers) e evita reescrever o template. Se você preferir Next.js puro, precisamos migrar o projeto fora do Lovable. **Confirme antes de eu começar a codar.**
+## Princípios de arquitetura
 
-Restante do plano assume: TanStack Start + R3F + Supabase (Lovable Cloud) + Spotify OAuth.
+- **Uma única cena, coordenadas absolutas em `Float64` lógicas.** Three.js usa `Float32`, então mantemos coordenadas absolutas em JS (`Vector3` de doubles em um wrapper) e renderizamos com **camera-relative rendering**: a cada frame subtraímos a posição da câmera antes de enviar para a GPU. Isso resolve jitter a distâncias planetárias/galácticas.
+- **Escalas logarítmicas por camada** (universo→galáxia→sistema→planeta→superfície). O `CameraRig` decide qual "shell" está ativo e ajusta `near/far` dinamicamente, mas nunca troca de cena.
+- **Geração 100% procedural determinística por seed hierárquico.** `seed(universe) → seed(galaxy_i) → seed(system_j) → seed(planet_k) → seed(chunk_l)`. Nada persistido; tudo recalculável.
+- **Abstração de dados**: `UniverseProvider` interface. `MockUniverseProvider` (procedural + mock users atuais) hoje, `SpotifyUniverseProvider` depois.
+- **Streaming**: Octree espacial + chunk pool + workers. Só as regiões próximas são materializadas em objetos R3F; o resto vive como dados numéricos ou pontos instanciados.
 
----
-
-## 1. Stack técnica
-
-**Render 3D**
-- `three` + `@react-three/fiber` + `@react-three/drei`
-- `@react-three/postprocessing` (Bloom, Vignette, Tone Mapping ACES)
-- `leva` (debug dev-only)
-- GLSL custom shaders (atmosfera, superfície de planeta, nebulosa, buraco negro)
-- `three-mesh-bvh` para picking eficiente
-- `simplex-noise` / `fast-simplex-noise` para terreno procedural
-- `alea` para PRNG seed-based determinístico
-
-**App / SSR**
-- TanStack Start (rotas, loaders, `createServerFn`)
-- TanStack Query (cache, invalidations)
-- Zustand (estado da câmera / seleção / HUD — fora do React tree pesado)
-- Tailwind v4 + shadcn (HUD mínimo)
-
-**Backend**
-- Lovable Cloud (Postgres + Auth + Storage + Edge)
-- Spotify OAuth via `supabase.auth.signInWithOAuth('spotify')` (habilitar provider) + token refresh
-- Server functions TanStack para sync Spotify → Postgres
-- pg_cron para refresh incremental de "top artists / tracks / recent plays"
-
-**Perf**
-- InstancedMesh para pontos-de-luz (estrelas distantes)
-- BVH + Frustum + Occlusion culling
-- LOD por distância (4 níveis)
-- Web Workers (`comlink`) para geração de meshes procedurais
-- OffscreenCanvas quando disponível
-- Texturas KTX2/Basis para skins pagas
-
----
-
-## 2. Estrutura de pastas
+## Estrutura de pastas (adições, nada removido)
 
 ```text
 src/
-  routes/
-    __root.tsx
-    index.tsx                 # landing (galáxia em cinemática)
-    universe.tsx              # experiência 3D principal (ssr:false)
-    _authenticated/
-      route.tsx               # gate
-      me.tsx                  # meu sistema (deep-link)
-      settings.tsx
-    auth.tsx
-    u.$handle.tsx             # perfil público -> deep-link no universo
-    api/public/
-      webhooks.spotify.ts     # opcional
   three/
     core/
-      Engine.tsx              # <Canvas> raiz, postFX, camera rig
-      CameraRig.ts            # cinematic zoom (universe→galaxy→system→planet)
-      LODManager.ts           # switching por distância + hysteresis
-      Streamer.ts             # carrega/descarrega chunks
-      Chunk.ts                # espaço particionado em octree
-    scenes/
-      DeepSpace.tsx           # skybox procedural + starfield instanced
-      GalaxyView.tsx
-      SystemView.tsx
-      PlanetView.tsx
-    entities/
-      Star.tsx
-      Planet.tsx
-      Ring.tsx
-      Moon.tsx
-      BlackHole.tsx
-      Nebula.tsx
-    shaders/
-      atmosphere.vert/frag
-      planetSurface.vert/frag
-      nebula.vert/frag
-      blackhole.vert/frag
-      starfield.vert/frag
-    procedural/
-      seed.ts                 # alea PRNG
-      planetGen.ts            # heightmap + biome mapping
-      biomes.ts               # gênero -> paleta/atmosfera
-      systemLayout.ts         # órbitas a partir de playlists/músicas
-      galaxyLayout.ts         # posição do user na galáxia do artista
-    workers/
-      planetMesh.worker.ts
-      galaxyPoints.worker.ts
-  lib/
-    spotify/
-      sync.functions.ts       # createServerFn
-      mapping.ts              # dados Spotify -> atributos visuais
+      Engine.tsx                 (mantido — vai receber CameraRig novo)
+      CameraRig.tsx              (novo — modos Free/Cruise/Warp + auto-speed)
+      SceneRoot.tsx              (novo — origem flutuante / camera-relative)
+      LODManager.ts              (novo — decide nível por distância)
+      Streamer.tsx               (novo — pilota octree + pool)
+      Octree.ts                  (novo — nós, query por frustum+raio)
+      ObjectPool.ts              (novo)
+      FrustumCuller.ts           (novo)
     universe/
-      coordinates.ts          # galaxy-id/system-id -> vec3 determinístico
-      lod.ts
-  components/hud/             # overlays 2D mínimos
-  integrations/supabase/...   # gerado
+      types.ts                   (Body, Galaxy, System, Star, Planet, Moon, Nebula, BlackHole)
+      UniverseProvider.ts        (interface)
+      MockUniverseProvider.ts    (procedural + integra MOCK_USERS existentes)
+      SpotifyUniverseProvider.ts (stub)
+      hierarchy.ts               (seed hierárquico, coords absolutas)
+    procedural/
+      seed.ts                    (mantido, expandido: split/branch)
+      biomes.ts                  (mantido)
+      galaxyGen.ts               (novo — espiral/barrada/elíptica/irregular)
+      systemGen.ts               (novo)
+      planetGen.ts               (novo — usa Planet.tsx atual)
+      nebulaGen.ts               (novo)
+      blackHoleGen.ts            (novo)
+      asteroidBelt.ts            (novo)
+    entities/
+      Planet.tsx                 (mantido)
+      Ring.tsx                   (mantido)
+      Moon.tsx                   (mantido)
+      Star.tsx                   (novo — extraído do Planet.isStar)
+      Galaxy.tsx                 (novo — InstancedMesh de estrelas + shader núcleo)
+      Nebula.tsx                 (novo — volumétrico simples)
+      BlackHole.tsx              (novo — lente + disco)
+      AsteroidBelt.tsx           (novo — instanced)
+      DistantPoint.tsx           (novo — imposter de 1 vertex)
+    shaders/
+      galaxyPoints.glsl.ts
+      nebula.glsl.ts
+      blackhole.glsl.ts
+      atmosphere.glsl.ts
+    scenes/
+      SystemView.tsx             (mantido — vira "vista inicial" mas dentro do universo)
+      UniverseScene.tsx          (novo — orquestra tudo)
+    workers/
+      galaxyPoints.worker.ts     (novo — gera buffers instanced offline)
+      planetMesh.worker.ts       (novo — mesh LOD alto)
   state/
-    useCamera.ts
-    useSelection.ts
-    useStreaming.ts
+    useSelection.ts              (mantido)
+    useCamera.ts                 (novo — posição absoluta + modo de voo)
+    useStreaming.ts              (novo — chunks ativos, stats)
+    useDebug.ts                  (novo — toda customização vive aqui)
+  components/
+    hud/
+      UniverseHud.tsx            (mantido)
+      DebugPanel/                (novo — abas Performance / Visualização / Customização)
+        index.tsx
+        PerformanceTab.tsx
+        VisualizationTab.tsx
+        CustomizationTab.tsx
 ```
 
----
+## Camadas hierárquicas & LOD
 
-## 3. Modelo de dados (Postgres)
+| Camada | Escala típica | LOD |
+|---|---|---|
+| Universo | 10^6+ unidades | pontos instanciados por galáxia |
+| Galáxia | 10^4 | InstancedMesh de estrelas + shader de núcleo/braços |
+| Sistema | 10^2 | Estrela real + planetas como esferas simples |
+| Planeta | 1–10 | shader atual (fBM), 4 LODs de subdivisão |
+| Superfície | <1 | patches com displacement alto (fase futura) |
 
-Nada de geometria no banco — só atributos.
+`LODManager` recebe `cameraAbsPos` e para cada entidade retorna `imposter | low | mid | high`.
 
-```text
-profiles(id uuid PK -> auth.users, handle unique, display_name,
-         spotify_id, avatar_url, created_at)
+## Streaming
 
-user_stats(user_id PK, minutes_listened bigint, playlists_count int,
-           favorite_tracks_count int, diversity_score numeric,
-           top_artist_id text, last_synced timestamptz)
+- **Octree global** dividido por potências de escala (uma octree por camada). Query por frustum + raio de preload.
+- **ObjectPool** por tipo (Planet, Star, Galaxy, Nebula) para evitar realocação.
+- **Workers** geram meshes/buffers pesados fora da main thread; resultado transferível.
+- **Sem tela de loading**: quando um chunk ainda não chegou, mostramos imposter (ponto luminoso) que "explode" no objeto real quando pronto.
 
-user_bodies(user_id PK, body_type enum('planet','star'),
-            seed bigint, level int, prestige int,
-            atmosphere jsonb, ocean_coverage numeric,
-            cloud_density numeric, aurora bool,
-            ring_count int, moon_count int,
-            biome_ids int[], evolution_stage smallint,
-            is_black_hole bool default false, updated_at)
+## Navegação (CameraRig)
 
-genres(id serial PK, name text unique, hue numeric, palette jsonb)
-user_genres(user_id, genre_id, weight numeric, PRIMARY KEY(user_id,genre_id))
+- Modos `free`, `cruise`, `warp`. Velocidade cresce log-linearmente com a distância ao objeto mais próximo (`v = clamp(distToNearest * k, vmin, vmax)`), reduz suavemente ao aproximar.
+- Sem teleporte. Botão "jump to system" existente (HUD atual) vira **auto-pilot animado** que interpola a câmera absoluta.
 
-artists(id text PK /* spotify id */, name, image_url,
-        fandom_size int, galaxy_seed bigint, galaxy_radius numeric)
+## Painel Debug (única UI de customização)
 
-user_galaxy(user_id PK, artist_id -> artists, orbit_radius numeric,
-            orbit_angle numeric)   -- posição dentro da galáxia
+Aba única `Debug` com 3 sub-abas:
+- **Performance**: FPS, drawCalls, tris, chunks ativos, coords universais, seeds atuais, LOD.
+- **Visualização**: toggles para chunks/octree/frustum/BBox/órbitas/eixos/posições.
+- **Customização**: sliders zustand-driven que atualizam uniforms/params em tempo real — universo, galáxias, sistemas, planetas, estrelas, nebulosas, buracos negros. Também o **seletor Mock/Spotify**.
 
-playlists(id text PK, user_id, name, track_count int, hue numeric)
-tracks_top(user_id, rank smallint, track_id text, name, artist_id,
-           PRIMARY KEY(user_id, rank))  -- top 20 = luas candidatas
+Tudo persiste em `useDebug` (zustand + localStorage).
 
-spotify_tokens(user_id PK, access_token, refresh_token, expires_at)
-  -- RLS: só o próprio user; nunca exposta ao client
+## Integração com o que já existe
 
-sync_jobs(id, user_id, kind, status, started_at, finished_at, error)
-cosmetics(id, kind, name, price_cents, asset_url)
-user_cosmetics(user_id, cosmetic_id, equipped bool)
-prestige_events(user_id, prestige_level, occurred_at, snapshot jsonb)
-```
+- `MOCK_USERS` continua sendo a fonte dos "planetas de usuários"; `MockUniverseProvider` os injeta como sistemas reais dentro da galáxia inicial.
+- `SystemView.tsx` continua funcionando como componente reutilizável — o `UniverseScene` o instancia para o sistema em que a câmera está.
+- Rota `/universe` mantida; ganha o `DebugPanel` opcional (tecla `~`).
+- `mapping.ts`, `Planet.tsx`, `Ring.tsx`, `Moon.tsx`, `biomes.ts`, `seed.ts` — todos preservados.
 
-Regras:
-- RLS em tudo. `profiles`, `user_bodies`, `user_stats` legíveis por `anon` (perfis são públicos por design). `spotify_tokens` e `sync_jobs` só o dono.
-- GRANT explícito por tabela (padrão do template).
-- Coordenadas do universo NÃO ficam no banco — derivadas de `hash(user_id) → vec3` (determinístico).
+## Roadmap de entrega (incremental, sempre buildável)
 
----
+**Fase 1 — Fundação contínua** (esta entrega)
+1. `hierarchy.ts` + coords absolutas + `SceneRoot` camera-relative.
+2. `UniverseProvider` + `MockUniverseProvider` procedural (gera 1 universo → N galáxias → M sistemas → planetas, incluindo os `MOCK_USERS`).
+3. `UniverseScene` substituindo o interior do Canvas; `SystemView` continua sendo usado dentro dela.
+4. `CameraRig` com modos Free/Cruise/Warp + auto-speed.
+5. `Galaxy.tsx` (InstancedMesh espiral) + `Star.tsx` + `DistantPoint.tsx`.
+6. `DebugPanel` (Performance + Customização básica + toggle Mock/Spotify).
+7. `LODManager` simples (imposter/real) e `Octree` mínima.
 
-## 4. Mapeamento dados → visual
+**Fase 2 — Streaming & fidelidade**
+- Workers, ObjectPool completo, Frustum/Occlusion culling, BVH em planetas.
+- Nebulosas volumétricas, buracos negros com lente, cinturões de asteroides.
+- LOD de galáxia (núcleo→braços→estrelas individuais).
 
-| Dado | Atributo visual |
-|---|---|
-| Horas escutadas | `planet.radius = f(log(minutes))`, `level` |
-| Playlists | `rings[]`: n=`playlists_count`, cor=hue média |
-| Top tracks | `moons[]`: até 8, tamanho = popularity |
-| Gêneros | `biomes[]`, paleta, atmosfera Rayleigh |
-| Diversidade | nº de biomas distintos no planeta |
-| Artista top | galáxia (posição no universo) |
-| Tempo de conta | estágio de evolução (0..6) |
-| Prestige N | pós-supernova → estrela de tipo espectral N |
+**Fase 3 — Superfície & polish**
+- Patches de terreno com displacement alto, mobile tuning, cache procedural em IndexedDB.
 
-Toda transformação em `lib/spotify/mapping.ts`, pura, testável.
+## Riscos / decisões técnicas
 
----
+- **Float32 jitter**: mitigado por camera-relative rendering (obrigatório).
+- **Lente gravitacional** (buraco negro) custa caro no mobile → shader com fallback low-quality no `useDebug.qualityTier`.
+- **Occlusion culling real** no Three.js é limitado; começamos com frustum + distance culling e adicionamos hi-Z depois se necessário.
+- Sem persistência nesta fase (nada em Supabase); tudo é regenerável por seed. Spotify Cloud fica para depois, como planejado.
 
-## 5. Renderização procedural & LOD
-
-**Coordenadas globais**
-- Universo particionado em octree (chunks 1024³ unid.).
-- `systemPos = hash3(user_id) mod chunkSize + chunkOrigin` — determinístico, sem storage.
-- Galáxias: `galaxyPos = hash3(artist_id)`, usuários dentro em coordenadas polares.
-
-**LOD (4 níveis por corpo)**
-1. **Impostor** — 1 vértice em InstancedMesh, sprite billboard, aditivo + bloom. Milhões visíveis.
-2. **Esfera baixa** — ico-sphere 162 verts, cor sólida + halo.
-3. **Esfera média** — 2 562 verts, shader atmosfera, sem terreno.
-4. **Alta** — 40k verts, displacement por simplex noise no worker, normal map procedural, nuvens, oceanos, auroras.
-
-Switching com **histerese** (evita flicker) e fade cross-dissolve via alpha shader.
-
-**Streaming**
-- `Streamer` observa a câmera, calcula chunks visíveis + anel de pré-carga.
-- Fetch em batch: `getSystemsInChunks([...])` server fn → só atributos.
-- Descarrega meshes fora do raio; instâncias voltam pro pool.
-
-**Câmera cinematográfica**
-- Rig com 4 "modos" (universo / galáxia / sistema / planeta).
-- Zoom contínuo com easing exponencial; ajusta near/far dinamicamente pra evitar z-fighting (log-depth buffer).
-
-**Shaders principais**
-- Atmosfera: aproximação de Bruneton simplificada, Rayleigh + Mie.
-- Superfície: triplanar + biome blend por altitude/latitude.
-- Buraco negro: gravitational lensing via ray-marched disk + accretion.
-- Nebulosa: raymarch de fBM 3D em volume box, low-res + upscale.
-- Starfield: geometry shader-like via instancing, cor por temperatura (blackbody).
-
-**Pós-processamento**
-- ACES tone mapping, Bloom seletivo (emissive threshold), Vignette leve, TAA se disponível.
-
----
-
-## 6. Sync Spotify
-
-1. `signInWithOAuth('spotify', { scopes: 'user-top-read user-read-recently-played playlist-read-private' })`.
-2. Trigger `on_auth_user_created` → cria `profiles` + `user_bodies` (seed = `hashtext(id)`).
-3. Server fn `syncSpotify()` (autenticada): busca top artists/tracks/playlists, upserta, recalcula `user_bodies` via `mapping.ts`.
-4. `pg_cron` diário chama endpoint `/api/public/cron/refresh?token=…` que enfileira `sync_jobs`.
-5. Cache: nunca chamar Spotify no render path; UI lê Postgres.
-
----
-
-## 7. HUD / UX
-
-- Zero menus fixos. Apenas:
-  - Crosshair contextual (nome do sistema ao mirar).
-  - Painel deslizante ao "pousar" num planeta (dados musicais).
-  - Barra de busca `⌘K` → viaja com cinemática até o usuário/artista.
-- Compartilhamento: URL `spot.universe/u/handle` faz deep-link com câmera pré-posicionada + og:image gerada server-side (screenshot do planeta em baixa res).
-
----
-
-## 8. Roadmap
-
-### MVP (2–3 semanas)
-- Auth Spotify + criação de perfil.
-- Sync mínimo (top artists, top tracks, minutos estimados).
-- Cena única: **um sistema por vez**, câmera orbital.
-- Planeta procedural com LOD 3 e 4, anéis, luas, atmosfera básica.
-- Página `/u/:handle` pública.
-- Sem galáxia ainda, sem streaming.
-
-### Beta (4–6 semanas após MVP)
-- Universo com streaming + octree + InstancedMesh de estrelas.
-- Galáxias por artista, navegação livre entre sistemas.
-- Busca `⌘K`, deep-links, og:image.
-- Evolução (level up ao sincronizar), auroras, oceanos, nuvens.
-- Workers para geração de mesh.
-- Perf target: 60 FPS desktop médio, 30 FPS mobile.
-
-### 1.0
-- Buraco negro + supernova + prestige.
-- Nebulosas volumétricas.
-- Loja de cosméticos (skins, partículas, atmosferas).
-- Time-lapse de evolução (server-side render de vídeo — provavelmente via serviço externo, workerd não roda ffmpeg nativo).
-- PWA + otimizações mobile agressivas (KTX2, meshopt).
-- Realtime "presença": ver quem está visitando seu sistema (Supabase Realtime).
-
----
-
-## 9. Riscos & decisões pendentes
-- **Next.js vs TanStack Start** (ver §0).
-- **Spotify em produção**: precisa aprovação do app pra sair do dev mode (25 users). Planejar cedo.
-- **Vídeos automáticos (time-lapse)**: não roda em Cloudflare Workers → precisará de serviço externo (Modal, Fly, Render).
-- **Mobile GPU**: buraco negro raymarched pode ser inviável — fallback shader necessário.
-- **Custo Spotify API**: rate-limit por app, não por user → cache agressivo obrigatório.
-
----
-
-**Próximo passo:** confirme (a) manter TanStack Start ou migrar para Next.js, e (b) se posso começar pelo MVP (auth Spotify + um sistema procedural navegável). Assim que aprovar, ativo Lovable Cloud, configuro o provider Spotify e começo pelo `Engine` + `PlanetView`.
+Confirma para eu começar pela **Fase 1**?
