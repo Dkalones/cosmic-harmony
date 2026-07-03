@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo } from "react";
 import { Engine } from "@/three/core/Engine";
-import { SystemView } from "@/three/scenes/SystemView";
+import { UniverseScene } from "@/three/scenes/UniverseScene";
 import { UniverseHud } from "@/components/hud/UniverseHud";
+import { DebugPanel } from "@/components/hud/DebugPanel";
 import { useSelection } from "@/state/useSelection";
 import { mapUserToBody } from "@/lib/spotify/mapping";
+import { useMemo } from "react";
 
 export const Route = createFileRoute("/universe")({
   ssr: false,
@@ -32,9 +33,10 @@ function UniverseRoute() {
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[#02030a] text-white">
       <Engine>
-        <SystemView body={body} />
+        <UniverseScene />
       </Engine>
       <UniverseHud body={body} />
+      <DebugPanel />
     </div>
   );
 }

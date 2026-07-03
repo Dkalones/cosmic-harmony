@@ -32,7 +32,18 @@ export function UniverseScene() {
     const provider = dataSource === "spotify"
       ? new SpotifyUniverseProvider()
       : new MockUniverseProvider();
-    setUniverse(provider.build(universeSeed));
+    const u = provider.build(universeSeed);
+    setUniverse(u);
+    // Snap camera to the first known user system so we boot with something visible.
+    const first = u.galaxies[0]?.systems.find((s) => s.userBody);
+    if (first) {
+      useCamera.getState().setAbsPos([
+        first.center[0],
+        first.center[1] + 4,
+        first.center[2] + 14,
+      ]);
+      useCamera.getState().setYawPitch(0, -0.15);
+    }
   }, [dataSource, universeSeed, setUniverse]);
 
   // Per-frame LOD + streaming stats update
