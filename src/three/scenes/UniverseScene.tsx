@@ -36,7 +36,7 @@ export function UniverseScene() {
   }, [dataSource, universeSeed, setUniverse]);
 
   // Per-frame LOD + streaming stats update
-  const { gl } = useThree();
+  const { gl: renderer } = useThree();
   useFrame(({ clock }, dt) => {
     if (!universe) return;
     const cam = useCamera.getState().absPos;
@@ -51,10 +51,10 @@ export function UniverseScene() {
     for (const g of universe.galaxies) {
       const dg = vec3Dist(cam, g.center);
       if (dg < nearestGalaxyDist) { nearestGalaxyDist = dg; nearestGalaxy = g.id; }
-      const gl = galaxyLOD(dg / renderDistance);
-      if (gl !== "imposter") loaded++;
+      const glod = galaxyLOD(dg / renderDistance);
+      if (glod !== "imposter") loaded++;
       if (dg < g.radius * 1.5) {
-        currentLOD = "galaxy:" + gl;
+        currentLOD = "galaxy:" + glod;
         for (const s of g.systems) {
           const ds = vec3Dist(cam, s.center);
           if (ds < nearestSystemDist) { nearestSystemDist = ds; nearestSystem = s.id; }
@@ -77,8 +77,8 @@ export function UniverseScene() {
       currentSystemId: nearestSystem,
       currentLOD,
       fps,
-      drawCalls: gl.info.render.calls,
-      triangles: gl.info.render.triangles,
+      drawCalls: renderer.info.render.calls,
+      triangles: renderer.info.render.triangles,
     });
 
     // silence unused
