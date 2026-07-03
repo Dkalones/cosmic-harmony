@@ -1,0 +1,106 @@
+import { useMemo, useRef } from "react";
+import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
+import { makePRNG } from "@/three/procedural/seed";
+import type { GalaxyData } from "@/three/universe/types";
+import { useDebug } from "@/state/useDebug";
+
+/**
+ * Renders a procedural galaxy as a large point-cloud. Real user systems live
+ * *inside* the same volume as separate entities — this component only draws
+ * the background stars that give the galaxy its shape.
+ */
+export function Galaxy({ galaxy, detail = "mid" }: { galaxy: GalaxyData; detail?: "low" | "mid" | "high" }) {
+  const armTight = useDebug((s) => s.galaxyArmTightness);
+  const thickness = useDebug((s) => s.galaxyThickness);
+  const coreBright = useDebug((s) => s.galaxyCoreBrightness);
+
+  const { positions, colors, sizes } = useMemo(() => {
+    const count = detail === "high" ? galaxy.starCount
+      : detail === "mid" ? Math.floor(galaxy.starCount * 0.35)
+      : Math.floor(galaxy.starCount * 0.08);
+    const rng = makePRNG(galaxy.seed ^ 0x51ed);
+    const pos = new Float32Array(count * 3);
+    const col = new Float32Array(count * 3);
+    const sz = new Float32Array(count);
+    const r = galaxy.radius;
+    for (let i = 0; i < count; i++) {
+      let x = 0, y = 0, z = 0;
+      if (galaxy.type === "spiral" || galaxy.type === "barred") {
+        const arm = Math.floor(rng() * Math.max(1, galaxy.arms));
+        const t = Math.pow(rng(), 0.55);
+        const armAngle = (arm / galaxy.arms) * Math.PI * 2
+          + t * Math.PI * 2.5 * armTight;
+        const rad = t * r;
+        const jitter = (1 - t) * r * 0.06;
+        x = Math.cos(armAngle) * rad + (rng() - 0.5) * jitter;
+        z = Math.sin(armAngle) * rad + (rng() - 0.5) * jitter;
+        y = (rng() - 0.5) * r * 0.03 * thickness * (1 - t * 0.7);
+      } else if (galaxy.type === "elliptical") {
+        const t = Math.pow(rng(), 0.4);
+        const a = rng() * Math.PI * 2;
+        const phi = Math.acos(1 - 2 * rng());
+        x = Math.sin(phi) * Math.cos(a) * t * r;
+        y = Math.cos(phi) * t * r * 0.6;
+        z = Math.sin(phi) * Math.sin(a) * t * r;
+      } else {
+        x = (rng() - 0.5) * r * 1.5;
+        y = (rng() - 0.5) * r * 0.4;
+        z = (rng() - 0.5) * r * 1.5;
+      }
+      pos[i * 3] = x;
+      pos[i * 3 + 1] = y;
+      pos[i * 3 + 2] = z;
+      // color: core = warm/bright, arms = bluish
+      const dr = Math.hypot(x, y, z) / r;
+      const core = 1 - Math.min(1, dr * 2);
+      col[i * 3] = 0.7 + 0.3 * core * coreBright;
+      col[i * 3 + 1] = 0.6 + 0.3 * core * coreBright;
+      col[i * 3 + 2] = 0.9 - 0.4 * core;
+      sz[i] = 1 + core * 3 * coreBright + rng() * 1.5;
+    }
+    return { positions: pos, colors: col, sizes: sz };
+  }, [galaxy, detail, armTight, thickness, coreBright]);
+
+  const geo = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    g.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+    return g;
+  }, [positions, colors, sizes]);
+
+  const mat = useMemo(() => new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexColors: true,
+    uniforms: { uPixelRatio: { value: window.devicePixelRatio || 1 } },
+    vertexShader: /* glsl */ `
+      attribute float size;
+      varying vec3 vColor;
+      uniform float uPixelRatio;
+      void main(){
+        vColor = color;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * uPixelRatio * (300.0 / max(-mv.z, 1.0));
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      varying vec3 vColor;
+      void main(){
+        vec2 d = gl_PointCoord - vec2(0.5);
+        float a = smoothstep(0.5, 0.0, length(d));
+        gl_FragColor = vec4(vColor, a);
+      }
+    `,
+  }), []);
+
+  const ref = useRef<THREE.Points>(null);
+  useFrame((_, dt) => {
+    if (ref.current) ref.current.rotation.y += dt * 0.005;
+  });
+
+  return <points ref={ref} geometry={geo} material={mat} />;
+}
