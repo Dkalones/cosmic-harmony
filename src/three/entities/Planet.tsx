@@ -10,6 +10,8 @@ const planetVert = /* glsl */ `
   uniform float uSeed;
   varying vec3 vNormal;
   varying vec3 vPos;
+  varying vec3 vWorld;
+  varying vec3 vWNormal;
   varying float vElevation;
 
   // hash & noise
@@ -44,6 +46,8 @@ const planetVert = /* glsl */ `
     vec3 displaced = position + normal * e * uDisplacement;
     vPos = displaced;
     vNormal = normalize(normalMatrix * normal);
+    vWNormal = normalize(mat3(modelMatrix) * normal);
+    vWorld = (modelMatrix * vec4(displaced, 1.0)).xyz;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced,1.0);
   }
 `;
@@ -62,6 +66,8 @@ const planetFrag = /* glsl */ `
   uniform float uAurora;
   varying vec3 vNormal;
   varying vec3 vPos;
+  varying vec3 vWorld;
+  varying vec3 vWNormal;
   varying float vElevation;
 
   vec3 hash3(vec3 p){
@@ -109,14 +115,15 @@ const planetFrag = /* glsl */ `
     float clouds = smoothstep(0.15, 0.5, c) * uClouds;
     base = mix(base, vec3(1.0), clouds * 0.7);
 
-    // lighting (fake sun from +x/+y/+z)
+    // lighting (fake sun, world space)
+    vec3 N = normalize(vWNormal);
     vec3 L = normalize(vec3(0.6, 0.5, 0.8));
-    float ndl = max(dot(normalize(vNormal), L), 0.0);
+    float ndl = max(dot(N, L), 0.0);
     vec3 lit = base * (0.05 + ndl * 0.85);
 
-    // atmosphere rim
-    vec3 V = normalize(cameraPosition - vPos);
-    float fres = pow(1.0 - max(dot(normalize(vNormal), V), 0.0), 3.5);
+    // atmosphere rim — world-space normal vs world-space view vector
+    vec3 V = normalize(cameraPosition - vWorld);
+    float fres = pow(1.0 - max(dot(N, V), 0.0), 3.5);
     lit += uColAtmo * fres * uAtmo * 0.7;
 
     // aurora at poles when enabled
@@ -137,6 +144,8 @@ const starFrag = /* glsl */ `
   uniform float uTime;
   varying vec3 vNormal;
   varying vec3 vPos;
+  varying vec3 vWorld;
+  varying vec3 vWNormal;
   varying float vElevation;
   vec3 hash3(vec3 p){
     p = vec3(dot(p,vec3(127.1,311.7, 74.7)),
@@ -160,8 +169,8 @@ const starFrag = /* glsl */ `
     float n = snoise(vPos*3.0 + vec3(uTime*0.15));
     n += 0.5*snoise(vPos*6.0 - vec3(uTime*0.25));
     vec3 col = uColor * (1.4 + n*0.8);
-    vec3 V = normalize(cameraPosition - vPos);
-    float fres = pow(1.0 - max(dot(normalize(vNormal), V), 0.0), 2.0);
+    vec3 V = normalize(cameraPosition - vWorld);
+    float fres = pow(1.0 - max(dot(normalize(vWNormal), V), 0.0), 2.0);
     col += uColor * fres * 2.0;
     gl_FragColor = vec4(col, 1.0);
   }
@@ -239,7 +248,7 @@ export function Planet({ body }: PlanetProps) {
             vertexShader={/* glsl */ `
               varying vec3 vNormal; varying vec3 vPos;
               void main(){
-                vNormal = normalize(normalMatrix * normal);
+                vNormal = normalize(mat3(modelMatrix) * normal);
                 vPos = (modelMatrix * vec4(position,1.0)).xyz;
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
               }
@@ -272,7 +281,7 @@ export function Planet({ body }: PlanetProps) {
             vertexShader={/* glsl */ `
               varying vec3 vNormal; varying vec3 vPos;
               void main(){
-                vNormal = normalize(normalMatrix * normal);
+                vNormal = normalize(mat3(modelMatrix) * normal);
                 vPos = (modelMatrix * vec4(position,1.0)).xyz;
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
               }
