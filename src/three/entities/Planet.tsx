@@ -248,9 +248,11 @@ export function Planet({ body }: PlanetProps) {
               uniform vec3 uColor; uniform float uDensity;
               varying vec3 vNormal; varying vec3 vPos;
               void main(){
+                vec3 N = normalize(vNormal);
+                if(!gl_FrontFacing) N = -N;
                 vec3 V = normalize(cameraPosition - vPos);
-                float f = pow(1.0 - max(dot(normalize(vNormal), V), 0.0), 2.5);
-                gl_FragColor = vec4(uColor, f * uDensity * 0.9);
+                float f = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+                gl_FragColor = vec4(uColor, f * uDensity * 0.35);
               }
             `}
           />
@@ -279,9 +281,11 @@ export function Planet({ body }: PlanetProps) {
               uniform vec3 uColor;
               varying vec3 vNormal; varying vec3 vPos;
               void main(){
+                vec3 N = normalize(vNormal);
+                if(!gl_FrontFacing) N = -N;
                 vec3 V = normalize(cameraPosition - vPos);
-                float f = pow(1.0 - max(dot(normalize(vNormal), V), 0.0), 3.0);
-                gl_FragColor = vec4(uColor*1.5, f*0.9);
+                float f = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+                gl_FragColor = vec4(uColor*1.2, f*0.6);
               }
             `}
           />
