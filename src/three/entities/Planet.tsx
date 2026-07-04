@@ -268,7 +268,7 @@ export function Planet({ body }: PlanetProps) {
         </mesh>
       )}
       {/* Star corona */}
-      {body.isStar && (
+      {false && body.isStar && (
         <mesh scale={1.6}>
           <icosahedronGeometry args={[body.radius, 16]} />
           <shaderMaterial
