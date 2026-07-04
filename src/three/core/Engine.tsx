@@ -13,7 +13,7 @@ function EngineInner({ children }: { children: ReactNode }) {
       <ambientLight intensity={0.04} />
       <CameraRig />
       {children}
-      {false && <EffectComposer>
+      <EffectComposer>
         <Bloom
           intensity={bloom * 0.6}
           luminanceThreshold={0.75}
@@ -21,7 +21,7 @@ function EngineInner({ children }: { children: ReactNode }) {
           mipmapBlur
         />
         <Vignette eskil={false} offset={0.2} darkness={0.75} />
-      </EffectComposer>}
+      </EffectComposer>
     </>
   );
 }
