@@ -121,7 +121,7 @@ const planetFrag = /* glsl */ `
     float ndl = max(dot(N, L), 0.0);
     vec3 lit = base * (0.05 + ndl * 0.85);
 
-   / atmosphere rim — world-space normal vs world-space view vector
+   // atmosphere rim — world-space normal vs world-space view vector
 vec3 V = normalize(cameraPosition - vWorld);
 float fres = pow(1.0 - max(dot(N, V), 0.0), 3.5);
 lit += uColAtmo * fres * uAtmo * 0.7;
