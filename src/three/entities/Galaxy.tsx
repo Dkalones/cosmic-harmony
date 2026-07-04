@@ -1,9 +1,10 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { makePRNG } from "@/three/procedural/seed";
 import type { GalaxyData } from "@/three/universe/types";
 import { useDebug } from "@/state/useDebug";
+import { requestGalaxyPoints, type GalaxyBuffers } from "@/three/workers/galaxyPointsPool";
 
 /**
  * Renders a procedural galaxy as a large point-cloud. Real user systems live
@@ -15,10 +16,34 @@ export function Galaxy({ galaxy, detail = "mid" }: { galaxy: GalaxyData; detail?
   const thickness = useDebug((s) => s.galaxyThickness);
   const coreBright = useDebug((s) => s.galaxyCoreBrightness);
 
-  const { positions, colors, sizes } = useMemo(() => {
-    const count = detail === "high" ? galaxy.starCount
-      : detail === "mid" ? Math.floor(galaxy.starCount * 0.35)
-      : Math.floor(galaxy.starCount * 0.08);
+  const count = detail === "high" ? galaxy.starCount
+    : detail === "mid" ? Math.floor(galaxy.starCount * 0.35)
+    : Math.floor(galaxy.starCount * 0.08);
+
+  // Small point-clouds stay on the main thread (cheap); heavy ones go to the
+  // worker so mid/high LOD swaps don't stall the frame.
+  const useWorker = count > 4000;
+  const [async, setAsync] = useState<GalaxyBuffers | null>(null);
+
+  useEffect(() => {
+    if (!useWorker) { setAsync(null); return; }
+    let cancelled = false;
+    const { promise, cancel } = requestGalaxyPoints({
+      seed: galaxy.seed,
+      radius: galaxy.radius,
+      arms: galaxy.arms,
+      type: galaxy.type,
+      count,
+      armTight,
+      thickness,
+      coreBright,
+    });
+    promise.then((b) => { if (!cancelled) setAsync(b); });
+    return () => { cancelled = true; cancel(); };
+  }, [useWorker, galaxy.seed, galaxy.radius, galaxy.arms, galaxy.type, count, armTight, thickness, coreBright]);
+
+  const sync = useMemo(() => {
+    if (useWorker) return null;
     const rng = makePRNG(galaxy.seed ^ 0x51ed);
     const pos = new Float32Array(count * 3);
     const col = new Float32Array(count * 3);
@@ -60,15 +85,18 @@ export function Galaxy({ galaxy, detail = "mid" }: { galaxy: GalaxyData; detail?
       sz[i] = 1 + core * 3 * coreBright + rng() * 1.5;
     }
     return { positions: pos, colors: col, sizes: sz };
-  }, [galaxy, detail, armTight, thickness, coreBright]);
+  }, [useWorker, galaxy, count, armTight, thickness, coreBright]);
+
+  const buffers = useWorker ? async : sync;
 
   const geo = useMemo(() => {
+    if (!buffers) return null;
     const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    g.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+    g.setAttribute("position", new THREE.BufferAttribute(buffers.positions, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(buffers.colors, 3));
+    g.setAttribute("size", new THREE.BufferAttribute(buffers.sizes, 1));
     return g;
-  }, [positions, colors, sizes]);
+  }, [buffers]);
 
   const mat = useMemo(() => new THREE.ShaderMaterial({
     transparent: true,
@@ -109,5 +137,6 @@ export function Galaxy({ galaxy, detail = "mid" }: { galaxy: GalaxyData; detail?
     if (ref.current) ref.current.rotation.y += dt * 0.005;
   });
 
+  if (!geo) return null;
   return <points ref={ref} geometry={geo} material={mat} />;
 }

@@ -1,5 +1,5 @@
-import { useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useMemo, useRef, useState } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { NebulaData } from "@/three/universe/types";
 
@@ -106,6 +106,9 @@ const nebulaFrag = /* glsl */ `
 
 export function Nebula({ nebula }: { nebula: NebulaData }) {
   const matRef = useRef<THREE.ShaderMaterial>(null);
+  const groupRef = useRef<THREE.Group>(null);
+  const { camera } = useThree();
+  const [lod, setLod] = useState<"imposter" | "billboard" | "volume">("billboard");
 
   const uniforms = useMemo<Record<string, THREE.IUniform>>(
     () => ({
@@ -119,25 +122,90 @@ export function Nebula({ nebula }: { nebula: NebulaData }) {
     [nebula],
   );
 
+  const billboardUniforms = useMemo<Record<string, THREE.IUniform>>(
+    () => ({
+      uColA: { value: new THREE.Color(...nebula.colorA) },
+      uColB: { value: new THREE.Color(...nebula.colorB) },
+      uDensity: { value: nebula.density },
+    }),
+    [nebula],
+  );
+
   useFrame((_, dt) => {
     if (matRef.current) {
       (matRef.current.uniforms.uTime.value as number) += dt;
     }
+    if (groupRef.current) {
+      // distance from camera to nebula center (world space)
+      const wp = groupRef.current.getWorldPosition(_scratch);
+      const d = camera.position.distanceTo(wp);
+      const rel = d / Math.max(nebula.radius, 1);
+      const next: typeof lod =
+        rel > 40 ? "imposter" : rel > 6 ? "billboard" : "volume";
+      if (next !== lod) setLod(next);
+    }
   });
 
+  if (lod === "imposter") {
+    // Too far to matter: don't render at all; the galaxy point cloud already
+    // covers the volume. Keeps draw calls low across dozens of galaxies.
+    return <group ref={groupRef} />;
+  }
+
+  if (lod === "billboard") {
+    return (
+      <group ref={groupRef}>
+        <sprite scale={[nebula.radius * 2.2, nebula.radius * 2.2, 1]}>
+          <shaderMaterial
+            transparent
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+            uniforms={billboardUniforms}
+            vertexShader={`
+              varying vec2 vUv;
+              void main(){
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+              }
+            `}
+            fragmentShader={`
+              varying vec2 vUv;
+              uniform vec3 uColA;
+              uniform vec3 uColB;
+              uniform float uDensity;
+              void main(){
+                vec2 p = vUv - 0.5;
+                float r = length(p) * 2.0;
+                if(r > 1.0) discard;
+                float core = pow(1.0 - r, 3.0);
+                float halo = pow(1.0 - r, 1.3) * 0.4;
+                vec3 col = mix(uColA, uColB, core);
+                gl_FragColor = vec4(col, (core + halo) * uDensity * 0.55);
+              }
+            `}
+          />
+        </sprite>
+      </group>
+    );
+  }
+
   return (
-    <mesh frustumCulled={false}>
-      {/* BackSide shell so the volume still renders when the camera is inside */}
-      <icosahedronGeometry args={[nebula.radius, 3]} />
-      <shaderMaterial
-        ref={matRef}
-        vertexShader={nebulaVert}
-        fragmentShader={nebulaFrag}
-        uniforms={uniforms}
-        transparent
-        depthWrite={false}
-        side={THREE.BackSide}
-      />
-    </mesh>
+    <group ref={groupRef}>
+      <mesh frustumCulled={false}>
+        {/* BackSide shell so the volume still renders when the camera is inside */}
+        <icosahedronGeometry args={[nebula.radius, 3]} />
+        <shaderMaterial
+          ref={matRef}
+          vertexShader={nebulaVert}
+          fragmentShader={nebulaFrag}
+          uniforms={uniforms}
+          transparent
+          depthWrite={false}
+          side={THREE.BackSide}
+        />
+      </mesh>
+    </group>
   );
 }
+
+const _scratch = new THREE.Vector3();
