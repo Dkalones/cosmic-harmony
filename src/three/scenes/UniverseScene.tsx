@@ -131,9 +131,9 @@ function GalaxyRenderer({ galaxy }: { galaxy: import("@/three/universe/types").G
     return (
       <>
         <AbsoluteGroup absPos={galaxy.center}>
-          {false && <Galaxy galaxy={galaxy} detail="low" />}
+          <Galaxy galaxy={galaxy} detail="low" />
         </AbsoluteGroup>
-        {false && <GalaxyVolumetrics galaxy={galaxy} />}
+        <GalaxyVolumetrics galaxy={galaxy} />
       </>
     );
   }
@@ -142,9 +142,9 @@ function GalaxyRenderer({ galaxy }: { galaxy: import("@/three/universe/types").G
   return (
     <>
       <AbsoluteGroup absPos={galaxy.center}>
-        {false && <Galaxy galaxy={galaxy} detail="mid" />}
+        <Galaxy galaxy={galaxy} detail="mid" />
       </AbsoluteGroup>
-      {false && <GalaxyVolumetrics galaxy={galaxy} />}
+      <GalaxyVolumetrics galaxy={galaxy} />
       {galaxy.systems.map((s) => (
         <SystemRenderer key={s.id} system={s} showDot={showSysDots} />
       ))}

@@ -168,10 +168,10 @@ const starFrag = /* glsl */ `
   void main(){
     float n = snoise(vPos*3.0 + vec3(uTime*0.15));
     n += 0.5*snoise(vPos*6.0 - vec3(uTime*0.25));
-    vec3 col = uColor * (1.4 + n*0.8);
+    vec3 col = uColor * (0.55 + n*0.25);
     vec3 V = normalize(cameraPosition - vWorld);
     float fres = pow(1.0 - max(dot(normalize(vWNormal), V), 0.0), 2.0);
-    col += uColor * fres * 2.0;
+    col += uColor * fres * 0.5;
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -268,7 +268,7 @@ export function Planet({ body }: PlanetProps) {
         </mesh>
       )}
       {/* Star corona */}
-      {false && body.isStar && (
+      {body.isStar && (
         <mesh scale={1.6}>
           <icosahedronGeometry args={[body.radius, 16]} />
           <shaderMaterial
@@ -294,7 +294,7 @@ export function Planet({ body }: PlanetProps) {
                 if(!gl_FrontFacing) N = -N;
                 vec3 V = normalize(cameraPosition - vPos);
                 float f = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-                gl_FragColor = vec4(uColor*1.2, f*0.6);
+                gl_FragColor = vec4(uColor*0.9, f*0.35);
               }
             `}
           />
