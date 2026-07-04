@@ -5,6 +5,7 @@ import { branchSeed, SCALE, type Vec3 } from "./hierarchy";
 import type {
   GalaxyData,
   GalaxyType,
+  NebulaData,
   SystemData,
   UniverseData,
 } from "./types";
@@ -54,6 +55,7 @@ export class MockUniverseProvider implements UniverseProvider {
       ];
 
       const systems = buildSystems(gSeed, i, center, radius, arms, type);
+      const nebulae = buildNebulae(gSeed, i, center, radius);
 
       galaxies.push({
         id: `g_${i}`,
@@ -66,12 +68,55 @@ export class MockUniverseProvider implements UniverseProvider {
         starCount: type === "elliptical" ? 8000 : 12000,
         coreColor,
         hasBlackHole: gRng() > 0.3,
+        nebulae,
         systems,
       });
     }
 
     return { seed, name: "SpotUniverse", galaxies };
   }
+}
+
+function buildNebulae(
+  gSeed: number,
+  gIndex: number,
+  center: Vec3,
+  radius: number,
+): NebulaData[] {
+  const rng = makePRNG(branchSeed(gSeed, "nebulae"));
+  const count = 2 + Math.floor(rng() * 3);
+  const nebulae: NebulaData[] = [];
+  for (let n = 0; n < count; n++) {
+    const nSeed = branchSeed(gSeed, `neb${n}`);
+    const nRng = makePRNG(nSeed);
+    const a = nRng() * Math.PI * 2;
+    const rr = Math.pow(nRng(), 0.7) * radius * 0.8;
+    const hue = nRng() * Math.PI * 2;
+    const colorA: [number, number, number] = [
+      0.25 + 0.45 * Math.abs(Math.sin(hue)),
+      0.15 + 0.30 * Math.abs(Math.sin(hue + 2.1)),
+      0.35 + 0.55 * Math.abs(Math.cos(hue)),
+    ];
+    const colorB: [number, number, number] = [
+      Math.min(1, colorA[0] * 1.8 + 0.2),
+      Math.min(1, colorA[1] * 1.6 + 0.25),
+      Math.min(1, colorA[2] * 1.5 + 0.2),
+    ];
+    nebulae.push({
+      id: `neb_g${gIndex}_${n}`,
+      seed: nSeed,
+      center: [
+        center[0] + Math.cos(a) * rr,
+        center[1] + (nRng() - 0.5) * radius * 0.1,
+        center[2] + Math.sin(a) * rr,
+      ],
+      radius: randRange(nRng, radius * 0.06, radius * 0.16),
+      colorA,
+      colorB,
+      density: randRange(nRng, 0.6, 1.3),
+    });
+  }
+  return nebulae;
 }
 
 function buildSystems(

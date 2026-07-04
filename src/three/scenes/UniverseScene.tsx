@@ -4,6 +4,8 @@ import { AbsoluteGroup } from "@/three/core/AbsoluteGroup";
 import { Galaxy } from "@/three/entities/Galaxy";
 import { Star } from "@/three/entities/Star";
 import { DistantPoint } from "@/three/entities/DistantPoint";
+import { Nebula } from "@/three/entities/Nebula";
+import { BlackHole } from "@/three/entities/BlackHole";
 import { SystemView } from "@/three/scenes/SystemView";
 import { useCamera } from "@/state/useCamera";
 import { useUniverseStore } from "@/state/useUniverseStore";
@@ -124,12 +126,15 @@ function GalaxyRenderer({ galaxy }: { galaxy: import("@/three/universe/types").G
     );
   }
 
-  // Mid: show galaxy point cloud, systems only as dots
+  // Mid: show galaxy point cloud + volumetrics, systems only as dots
   if (lod === "mid") {
     return (
-      <AbsoluteGroup absPos={galaxy.center}>
-        <Galaxy galaxy={galaxy} detail="low" />
-      </AbsoluteGroup>
+      <>
+        <AbsoluteGroup absPos={galaxy.center}>
+          <Galaxy galaxy={galaxy} detail="low" />
+        </AbsoluteGroup>
+        <GalaxyVolumetrics galaxy={galaxy} />
+      </>
     );
   }
 
@@ -139,9 +144,28 @@ function GalaxyRenderer({ galaxy }: { galaxy: import("@/three/universe/types").G
       <AbsoluteGroup absPos={galaxy.center}>
         <Galaxy galaxy={galaxy} detail="mid" />
       </AbsoluteGroup>
+      <GalaxyVolumetrics galaxy={galaxy} />
       {galaxy.systems.map((s) => (
         <SystemRenderer key={s.id} system={s} showDot={showSysDots} />
       ))}
+    </>
+  );
+}
+
+/** Nebulae + central black hole shared by mid/high galaxy LOD. */
+function GalaxyVolumetrics({ galaxy }: { galaxy: import("@/three/universe/types").GalaxyData }) {
+  return (
+    <>
+      {galaxy.nebulae.map((n) => (
+        <AbsoluteGroup key={n.id} absPos={n.center}>
+          <Nebula nebula={n} />
+        </AbsoluteGroup>
+      ))}
+      {galaxy.hasBlackHole && (
+        <AbsoluteGroup absPos={galaxy.center}>
+          <BlackHole radius={galaxy.radius * 0.02} seed={galaxy.seed} />
+        </AbsoluteGroup>
+      )}
     </>
   );
 }

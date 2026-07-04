@@ -79,20 +79,27 @@ export function Galaxy({ galaxy, detail = "mid" }: { galaxy: GalaxyData; detail?
     vertexShader: /* glsl */ `
       attribute float size;
       varying vec3 vColor;
+      varying float vFade;
       uniform float uPixelRatio;
       void main(){
         vColor = color;
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = size * uPixelRatio * (300.0 / max(-mv.z, 1.0));
+        float dist = max(-mv.z, 1.0);
+        // clamp sprite size so near points never balloon into screen-filling washes
+        gl_PointSize = min(size * uPixelRatio * (300.0 / dist), 42.0);
+        // fade out points that get too close to the camera
+        vFade = smoothstep(40.0, 600.0, dist);
         gl_Position = projectionMatrix * mv;
       }
     `,
     fragmentShader: /* glsl */ `
       varying vec3 vColor;
+      varying float vFade;
       void main(){
+        if(vFade < 0.004) discard;
         vec2 d = gl_PointCoord - vec2(0.5);
         float a = smoothstep(0.5, 0.0, length(d));
-        gl_FragColor = vec4(vColor, a);
+        gl_FragColor = vec4(vColor, a * vFade);
       }
     `,
   }), []);

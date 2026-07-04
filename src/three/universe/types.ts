@@ -3,6 +3,16 @@ import type { BodyAttrs } from "@/lib/spotify/mapping";
 
 export type GalaxyType = "spiral" | "barred" | "elliptical" | "irregular";
 
+export interface NebulaData {
+  id: string;
+  seed: number;
+  center: Vec3; // absolute
+  radius: number;
+  colorA: [number, number, number]; // wispy edge tint
+  colorB: [number, number, number]; // hot core tint
+  density: number;
+}
+
 export interface UniverseData {
   seed: number;
   name: string;
@@ -20,6 +30,7 @@ export interface GalaxyData {
   starCount: number;
   coreColor: [number, number, number];
   hasBlackHole: boolean;
+  nebulae: NebulaData[];
   systems: SystemData[];
 }
 
