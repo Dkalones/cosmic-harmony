@@ -112,18 +112,18 @@ const planetFrag = /* glsl */ `
     // lighting (fake sun from +x/+y/+z)
     vec3 L = normalize(vec3(0.6, 0.5, 0.8));
     float ndl = max(dot(normalize(vNormal), L), 0.0);
-    vec3 lit = base * (0.15 + ndl * 1.1);
+    vec3 lit = base * (0.05 + ndl * 0.85);
 
     // atmosphere rim
     vec3 V = normalize(cameraPosition - vPos);
-    float fres = pow(1.0 - max(dot(normalize(vNormal), V), 0.0), 3.0);
-    lit += uColAtmo * fres * uAtmo * 1.6;
+    float fres = pow(1.0 - max(dot(normalize(vNormal), V), 0.0), 3.5);
+    lit += uColAtmo * fres * uAtmo * 0.7;
 
     // aurora at poles when enabled
     if(uAurora > 0.5){
       float polar = pow(abs(normalize(vPos).y), 6.0);
       float wav = 0.5 + 0.5*sin(uTime*0.6 + vPos.x*4.0);
-      lit += vec3(0.2, 0.9, 0.6) * polar * wav * 0.6;
+      lit += vec3(0.2, 0.9, 0.6) * polar * wav * 0.35;
     }
 
     gl_FragColor = vec4(lit, 1.0);
