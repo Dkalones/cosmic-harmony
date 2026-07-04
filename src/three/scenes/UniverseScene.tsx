@@ -15,6 +15,8 @@ import { MockUniverseProvider } from "@/three/universe/MockUniverseProvider";
 import { SpotifyUniverseProvider } from "@/three/universe/SpotifyUniverseProvider";
 import { galaxyLOD, systemLOD } from "@/three/core/LODManager";
 import { vec3Dist, SCALE } from "@/three/universe/hierarchy";
+import { Octree } from "@/three/core/Octree";
+import type { GalaxyData, SystemData } from "@/three/universe/types";
 
 /**
  * Orchestrates the whole universe in a single scene.
@@ -28,6 +30,23 @@ export function UniverseScene() {
   const renderDistance = useDebug((s) => s.renderDistance);
   const setUniverse = useUniverseStore((s) => s.setUniverse);
   const universe = useUniverseStore((s) => s.universe);
+
+  // Real octree built once per universe. Query per frame instead of scanning
+  // every galaxy/system — keeps the per-frame cost O(log N) as the universe grows.
+  const trees = useMemo(() => {
+    if (!universe) return null;
+    const galaxyTree = new Octree<GalaxyData>([0, 0, 0], SCALE.universeRadius, 6, 8);
+    const systemTree = new Octree<{ galaxy: GalaxyData; system: SystemData }>(
+      [0, 0, 0], SCALE.universeRadius, 8, 16,
+    );
+    for (const g of universe.galaxies) {
+      galaxyTree.insert({ pos: g.center, radius: g.radius, data: g });
+      for (const s of g.systems) {
+        systemTree.insert({ pos: s.center, radius: SCALE.systemRadius, data: { galaxy: g, system: s } });
+      }
+    }
+    return { galaxyTree, systemTree };
+  }, [universe]);
 
   // Build universe when inputs change
   useEffect(() => {
@@ -51,7 +70,7 @@ export function UniverseScene() {
   // Per-frame LOD + streaming stats update
   const { gl: renderer } = useThree();
   useFrame(({ clock }, dt) => {
-    if (!universe) return;
+    if (!universe || !trees) return;
     const cam = useCamera.getState().absPos;
 
     let loaded = 0;
@@ -61,20 +80,60 @@ export function UniverseScene() {
     let nearestSystemDist = Infinity;
     let currentLOD = "imposter";
 
-    for (const g of universe.galaxies) {
+    // Only consider galaxies inside the current render distance
+    const gHits = trees.galaxyTree.queryRadius(cam, renderDistance);
+    for (const gh of gHits) {
+      const g = gh.data;
       const dg = vec3Dist(cam, g.center);
       if (dg < nearestGalaxyDist) { nearestGalaxyDist = dg; nearestGalaxy = g.id; }
       const glod = galaxyLOD(dg / renderDistance);
       if (glod !== "imposter") loaded++;
       if (dg < g.radius * 1.5) {
         currentLOD = "galaxy:" + glod;
-        for (const s of g.systems) {
-          const ds = vec3Dist(cam, s.center);
-          if (ds < nearestSystemDist) { nearestSystemDist = ds; nearestSystem = s.id; }
-          const sl = systemLOD(ds / renderDistance);
-          if (sl !== "imposter") loaded++;
-          if (ds < SCALE.systemRadius * 3) currentLOD = "system:" + sl;
-        }
+      }
+    }
+    // Systems: query only nearby ones from the finer tree
+    const sysRange = SCALE.systemSpacing * 4;
+    const sHits = trees.systemTree.queryRadius(cam, sysRange);
+    for (const sh of sHits) {
+      const s = sh.data.system;
+      const ds = vec3Dist(cam, s.center);
+      if (ds < nearestSystemDist) { nearestSystemDist = ds; nearestSystem = s.id; }
+      const sl = systemLOD(ds / renderDistance);
+      if (sl !== "imposter") loaded++;
+      if (ds < SCALE.systemRadius * 3) currentLOD = "system:" + sl;
+    }
+
+    // silence unused
+    void clock;
+
+    // FPS: exponential moving avg
+    const inst = 1 / Math.max(dt, 1e-4);
+    const prev = useStreaming.getState().fps;
+    const fps = prev === 0 ? inst : prev * 0.9 + inst * 0.1;
+
+    useStreaming.getState().set({
+      loadedObjects: loaded,
+      activeChunks: loaded,
+      currentGalaxyId: nearestGalaxy,
+      currentSystemId: nearestSystem,
+      currentLOD,
+      fps,
+      drawCalls: renderer.info.render.calls,
+      triangles: renderer.info.render.triangles,
+    });
+  });
+
+  if (!universe) return null;
+
+  return (
+    <group>
+      {universe.galaxies.map((g) => (
+        <GalaxyRenderer key={g.id} galaxy={g} />
+      ))}
+    </group>
+  );
+}
       }
     }
 
