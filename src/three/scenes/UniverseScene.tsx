@@ -134,40 +134,6 @@ export function UniverseScene() {
     </group>
   );
 }
-      }
-    }
-
-    // FPS: exponential moving avg
-    const inst = 1 / Math.max(dt, 1e-4);
-    const prev = useStreaming.getState().fps;
-    const fps = prev === 0 ? inst : prev * 0.9 + inst * 0.1;
-
-    useStreaming.getState().set({
-      loadedObjects: loaded,
-      activeChunks: loaded,
-      currentGalaxyId: nearestGalaxy,
-      currentSystemId: nearestSystem,
-      currentLOD,
-      fps,
-      drawCalls: renderer.info.render.calls,
-      triangles: renderer.info.render.triangles,
-    });
-
-    // silence unused
-    void clock;
-  });
-
-  if (!universe) return null;
-
-  return (
-    <group>
-      {universe.galaxies.map((g) => (
-        <GalaxyRenderer key={g.id} galaxy={g} />
-      ))}
-    </group>
-  );
-}
-
 function GalaxyRenderer({ galaxy }: { galaxy: import("@/three/universe/types").GalaxyData }) {
   const renderDistance = useDebug((s) => s.renderDistance);
   const showSysDots = useDebug((s) => s.showSystemPositions);
