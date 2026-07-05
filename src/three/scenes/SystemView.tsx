@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import * as THREE from "three";
 import type { BodyAttrs } from "@/lib/spotify/mapping";
 import { Planet } from "@/three/entities/Planet";
 import { Ring } from "@/three/entities/Ring";
@@ -20,7 +21,14 @@ export function SystemView({ body }: { body: BodyAttrs }) {
       ))}
       {/* Ambient sun light for moons */}
       <directionalLight position={[8, 5, 6]} intensity={1.6} />
-      <ambientLight intensity={0.08} />
+      {/* Fill light (bounced/space light) so shadowed hemispheres of moons/planet
+          don't render as pure black holes. */}
+      <directionalLight
+        position={[-6, -3, -4]}
+        intensity={0.35}
+        color={new THREE.Color(0.55, 0.65, 0.9)}
+      />
+      <ambientLight intensity={0.22} />
     </group>
   );
 }
