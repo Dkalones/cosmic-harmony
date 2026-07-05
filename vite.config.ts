@@ -12,4 +12,17 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  // R3F intrinsics (<mesh>, <group>, <shaderMaterial>, ...) forward every JSX
+  // prop to the underlying THREE object. The devtools "Go to Source" transform
+  // adds data-tsd-source to every JSX element, which R3F's applyProps then
+  // tries to write onto the THREE instance and throws. Skip injection for the
+  // three.js tree so the canvas mounts cleanly.
+  devtools: {
+    injectSource: {
+      enabled: true,
+      ignore: {
+        files: ["src/three/**"],
+      },
+    },
+  },
 });
