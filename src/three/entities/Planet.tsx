@@ -124,7 +124,7 @@ const planetFrag = /* glsl */ `
    // atmosphere rim — world-space normal vs world-space view vector
 vec3 V = normalize(cameraPosition - vWorld);
 float fres = pow(1.0 - max(dot(N, V), 0.0), 3.5);
-lit += uColAtmo * fres * uAtmo * 0.7;
+lit += uColAtmo * fres * uAtmo * 0.35;
 
 // aurora at poles when enabled
 if(uAurora > 0.5){
@@ -133,6 +133,8 @@ if(uAurora > 0.5){
   lit += vec3(0.2, 0.9, 0.6) * polar * wav * 0.35;
 }
 
+// clamp so the diffuse surface never blows out into the bloom pass
+lit = clamp(lit, 0.0, 1.0);
 gl_FragColor = vec4(lit, 1.0);
   }
 `;
